@@ -218,6 +218,9 @@ def csv_to_mol2(csv, prefix, cutoff, nsamples, ligand_pdb):
     if len(df)==0:
         return
 
+    if 'Unnamed: 0' in df.columns:
+        df = df.drop('Unnamed: 0', axis=1)
+
     df = df.drop_duplicates(['smiles'])
     # set unique id
     df['chemts_id'] = range(len(df))
@@ -242,6 +245,7 @@ def csv_to_mol2(csv, prefix, cutoff, nsamples, ligand_pdb):
         df_choise = choise_mol(df_reward_equal_1, os.path.dirname(csv), cutoff, nsamples)
     else:
         df_choise = df.sort_values('reward', ascending=False)[:nsamples]
+
     df_choise.drop('mols', axis=1).reset_index(drop=False).to_csv(os.path.join(os.path.dirname(csv), 'choise_to_docking.csv'))
 
     # create ID
