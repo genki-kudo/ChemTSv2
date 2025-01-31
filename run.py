@@ -190,16 +190,11 @@ def main():
     policy_evaluator = getattr(import_module(ps['policy_module']), ps['policy_class'])
     conf['max_len'], conf['rnn_vocab_size'], conf['rnn_output_size'] = get_model_structure_info(conf['model_setting']['model_json'], logger)
     model = loaded_model(conf['model_setting']['model_weight'], logger, conf)  #WM300 not tested  
-    conf["init_mw"] = 0
+    # conf["init_mw"] = 0
     if args.input_smiles is not None:
         logger.info(f"Extend mode: input SMILES = {args.input_smiles}")
         conf["input_smiles"] = args.input_smiles
-        conf["init_mol"] = Chem.MolFromSmiles(conf["input_smiles"])
         conf["tokenized_smiles"] = selfies_tokenizer_from_smiles(conf["input_smiles"]) if conf['use_selfies'] else smi_tokenizer(conf["input_smiles"])
-        conf["init_mw"] = Descriptors.ExactMolWt(Chem.MolFromSmiles(conf["input_smiles"]))
-        conf["init_logP"] = Descriptors.MolLogP(conf["init_mol"])
-        conf["init_acceptor"] = rdMolDescriptors.CalcNumLipinskiHBA(conf["init_mol"])
-        conf["init_donor"] = rdMolDescriptors.CalcNumLipinskiHBD(conf["init_mol"])
         
     if conf['threshold_type'] == 'time':  # To avoid user confusion
         conf.pop('generation_num')
