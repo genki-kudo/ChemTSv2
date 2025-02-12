@@ -27,30 +27,20 @@ def scale_objective_value(params, value):
 
 class MW_LogP_reward(Reward):
     def get_objective_functions(conf):
-        def Add_Substituent_MW(mol):
-            # mw  = Descriptors.ExactMolWt(mol)
-            
-            # 部分削除版(Hで塞いでいる？) 
-            # add_substituent = Chem.DeleteSubstructs(mol, conf['init_mol'])
-            # add_substituent_mw  = Descriptors.ExactMolWt(add_substituent)
-
-            # return mw - conf['init_mw']
+        def SINCHO_MW(mol):
             return Descriptors.ExactMolWt(mol) - conf['init_mw']
 
-        def Add_Substituent_LogP(mol):
-            # add_substituent = Chem.DeleteSubstructs(mol, conf['init_mol'])
-            # return Descriptors.MolLogP(mol)
+        def SINCHO_LogP(mol):
             return Descriptors.MolLogP(mol) - conf['init_logP']
 
-        return [Add_Substituent_MW, Add_Substituent_LogP]
+        return [SINCHO_MW, SINCHO_LogP]
 
     def calc_reward_from_objective_values(values, conf):
         if None in values:
             return -1
 
         dscore_params = conf["Dscore_parameters"]
-        objectives = ['MW', 'LogP']
-        # objectives = [f.__name__ for f in MW_LogP_reward.get_objective_functions(conf)]
+        objectives = [f.__name__ for f in MW_LogP_reward.get_objective_functions(conf)]
 
         scaled_values = []
         weights = []
