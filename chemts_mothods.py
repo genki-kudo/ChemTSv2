@@ -225,8 +225,8 @@ class Methods:
             dscore_parameters[key]['max'] = configs[key]['max']
             dscore_parameters[key]['min'] = configs[key]['min']
 
-      
-        with open(self.target_dirname, 'w') as f:
+        t_file = os.path.join(chemts_config['target_dirname'], '_setting.yaml')
+        with open(t_file, 'w') as f:
             yaml.dump(chemts_config, f, default_flow_style=False, sort_keys=False)
 
     # def csv_to_mol2(self, csv, output_path_prefix, ligand_pdb):
