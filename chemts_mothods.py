@@ -21,8 +21,8 @@ class Methods:
     def __init__(self, conf=None):
         self.conf = conf
         self.logger = self.setup_custom_logger('ChemTS', os.path.join('logs', 'ChemTS.log'))
-        self.chemts_config_path = os.path.join(self.conf.target_dirname, '_setting.yaml')
-        print("config_path=>", self.chemts_config_path)
+        #self.chemts_config_path = os.path.join(self.conf.target_dirname, '_setting.yaml')
+        #print("config_path=>", self.chemts_config_path)
 
     def setup_custom_logger(self, name, log_file, log_level=logging.INFO):
         logger = logging.getLogger(name)
@@ -225,7 +225,8 @@ class Methods:
             dscore_parameters[key]['max'] = configs[key]['max']
             dscore_parameters[key]['min'] = configs[key]['min']
 
-        with open(self.chemts_config_path, 'w') as f:
+      
+        with open(self.target_dirname, 'w') as f:
             yaml.dump(chemts_config, f, default_flow_style=False, sort_keys=False)
 
     # def csv_to_mol2(self, csv, output_path_prefix, ligand_pdb):
