@@ -87,9 +87,13 @@ class Generate_Lead:
                     rearrange_smi = self.cm.modify_smiles(rearrange_smi)
 
                 self.logger.info(f"rearrange_smi , {rearrange_smi}")
-
-                os.makedirs(os.path.join(cwd, 'work'), exist_ok=True)
-                subprocess.run(['rm', os.path.join('work', '_setting.yaml')], cwd=cwd)
+                
+                # smiles output のロケーションが固定されている
+                # /ChemTSv2に変更するため、この設定はPermission Denied
+                #os.makedirs(os.path.join(cwd, 'work'), exist_ok=True)
+                os.makedirs(os.path.join(cwd, self.target_dirname), exist_ok=True)
+                #subprocess.run(['rm', os.path.join('work', '_setting.yaml')], cwd=cwd)
+                subprocess.run(['rm', os.path.join(self.target_dirname, '_setting.yaml')], cwd=cwd)
                 self.cm.make_config_file({**config_add_props, **sincho_result}, weight_model_dir)
 
                 # 化合物生成をn回
