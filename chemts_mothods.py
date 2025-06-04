@@ -21,7 +21,7 @@ class Methods:
     def __init__(self, conf=None):
         self.conf = conf
         self.logger = self.setup_custom_logger('ChemTS', os.path.join('logs', 'ChemTS.log'))
-        self.chemts_config_path = os.path.join(self.target_dirname, '_setting.yaml')
+        self.chemts_config_path = os.path.join(self.conf.target_dirname, '_setting.yaml')
         print("config_path=>", self.chemts_config_path)
 
     def setup_custom_logger(self, name, log_file, log_level=logging.INFO):
