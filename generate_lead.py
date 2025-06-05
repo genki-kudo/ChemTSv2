@@ -11,7 +11,6 @@ from ChemTSv2.chemts_mothods import Methods, logs_dir
 import logging
 
 cwd = os.path.dirname(os.path.abspath(__file__))
-# target_dirname = 'work/results'
 
 class Generate_Lead:
     def __init__(self, trajectory_dirs, config):
@@ -87,35 +86,39 @@ class Generate_Lead:
                     rearrange_smi = self.cm.modify_smiles(rearrange_smi)
 
                 self.logger.info(f"rearrange_smi , {rearrange_smi}")
-
-                os.makedirs(os.path.join(cwd, 'work'), exist_ok=True)
-                subprocess.run(['rm', os.path.join('work', '_setting.yaml')], cwd=cwd)
+                
+                # smiles output のロケーションが固定されている
+                # /ChemTSv2に変更するため、この設定はPermission Denied
+                os.makedirs(os.path.join(self.target_dirname), exist_ok=True)
+                print(self.target_dirname)
+                subprocess.run(['rm', os.path.join(self.target_dirname, '_setting.yaml')])
                 self.cm.make_config_file({**config_add_props, **sincho_result}, weight_model_dir)
 
+                #print("GOOD")
                 # 化合物生成をn回
                 df_result_all = pd.DataFrame()
                 for n in range(1, int(self.conf['ChemTS']['num_chemts_loops'])+1):
                     with open(self.out_log_file, 'a') as stdout_f:
-                        subprocess.run(['python', 'run.py', '-c', os.path.join('work', '_setting.yaml'), 
-                                        '--input_smiles', rearrange_smi], cwd=cwd, stdout=stdout_f, stderr=stdout_f)
+                        subprocess.run(['python', '/ChemTSv2/run.py', '-c', os.path.join(self.target_dirname, '_setting.yaml'), 
+                                        '--input_smiles', rearrange_smi], stdout=stdout_f, stderr=stdout_f)
                         subprocess.run(' '.join(['mv', os.path.join(self.target_dirname, 'result_C*'), 
                                                        os.path.join(self.target_dirname, 'result.csv')]), 
-                                                       shell=True, cwd=cwd, stdout=stdout_f, stderr=stdout_f)
-                        df_result_one_cycle = pd.read_csv(os.path.join(cwd, self.target_dirname, 'result.csv'))
+                                                       shell=True, stdout=stdout_f, stderr=stdout_f)
+                        df_result_one_cycle = pd.read_csv(os.path.join(self.target_dirname, 'result.csv'))
                         df_result_one_cycle.insert(0, 'trial', n) 
                         df_result_all = pd.concat([df_result_all, df_result_one_cycle])
                         subprocess.run(' '.join(['cat', os.path.join(self.target_dirname, 'run.log'), 
-                                                 '>>', os.path.join(self.target_dirname, 'run.log.all')]), shell=True, cwd=cwd)
+                                                 '>>', os.path.join(self.target_dirname, 'run.log.all')]), shell=True )
                         
                 # for debug df_result_all
-                # df_result_all = pd.read_csv(os.path.join(cwd, self.target_dirname, 'results.csv'))
+                # df_result_all = pd.read_csv(os.path.join(self.target_dirname, 'results.csv'))
                 
                 # n回分を一つのファイルにし、個々のファイルは消しておく
-                output_csv_path = os.path.join(cwd, self.target_dirname, 'results.csv')
+                output_csv_path = os.path.join(self.target_dirname, 'results.csv')
                 df_result_all.to_csv(output_csv_path)
                 subprocess.run(['rm', os.path.join(self.target_dirname, 'result.csv'),], cwd=cwd)
                 
                 # 今回の生成のrewardなどをプロット
                 self.cm.plot_reward(output_csv_path)
 
-                subprocess.run(' '.join(['mv', os.path.join(cwd, self.target_dirname, '*'), rank_output_dir]), shell=True)
+                subprocess.run(' '.join(['mv', os.path.join(self.target_dirname, '*'), rank_output_dir]), shell=True)

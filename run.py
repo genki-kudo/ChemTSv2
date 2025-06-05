@@ -21,6 +21,8 @@ from chemtsv2.preprocessing import smi_tokenizer, selfies_tokenizer_from_smiles
 
 from IPython.core.debugger import Pdb
 
+cwd = os.path.dirname(os.path.abspath(__file__))
+
 def get_parser():
     parser = argparse.ArgumentParser(
         description="",
@@ -174,15 +176,6 @@ def main():
     if conf['random_seed'] != -1:
         conf['fix_random_seed'] = True
 
-    # download additional data if files don't exist
-    if not os.path.exists('data/sascorer.py'):
-        url = 'https://raw.githubusercontent.com/rdkit/rdkit/master/Contrib/SA_Score/sascorer.py'
-        with open('data/sascorer.py', 'w') as f:
-            f.write(requests.get(url).text)
-    if not os.path.exists('data/fpscores.pkl.gz'):
-        url = 'https://raw.githubusercontent.com/rdkit/rdkit/master/Contrib/SA_Score/fpscores.pkl.gz'
-        with open('data/fpscores.pkl.gz', 'wb') as f:
-            f.write(requests.get(url).content)
     
     rs = conf['reward_setting']
     reward_calculator = getattr(import_module(rs["reward_module"]), rs["reward_class"])
@@ -211,7 +204,7 @@ def main():
 
     conf['random_generator'] = default_rng(conf['random_seed']) if conf['fix_random_seed'] else default_rng()
 
-    with open(conf['token'], 'rb') as f:
+    with open(os.path.join(cwd,conf['token']), 'rb') as f:
         tokens = pickle.load(f)
     logger.debug(f"Loaded tokens are {tokens}")
 

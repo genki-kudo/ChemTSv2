@@ -1,6 +1,10 @@
 import sys
-sys.path.append("./data/")
-import sascorer
+import os
+
+cwd = os.path.dirname(os.path.abspath(__file__))
+
+sys.path.append(os.path.join(cwd,"../data/"))
+import data.sascorer as sascorer
 
 from chemtsv2.filter import Filter
 
