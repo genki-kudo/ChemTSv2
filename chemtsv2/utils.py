@@ -2,6 +2,7 @@ import copy
 from functools import wraps
 import itertools
 import sys
+import os
 import time
 
 import joblib
@@ -14,6 +15,7 @@ import selfies as sf
 
 from chemtsv2.misc.manage_qsub_parallel import run_qsub_parallel
 
+cwd = os.path.dirname(os.path.abspath(__file__))
 
 def calc_execution_time(f):
     @wraps(f)
@@ -112,7 +114,7 @@ def neutralize_atoms(mol):
 
 
 def get_model_structure_info(model_json, logger):
-    with open(model_json, 'r') as f:
+    with open(os.path.join(cwd,'../', model_json), 'r') as f:
         loaded_model_json = f.read()
     loaded_model = model_from_json(loaded_model_json)
     logger.info(f"Loaded model_json from {model_json}")
@@ -142,7 +144,7 @@ def loaded_model(model_weight, logger, conf):
                   return_sequences=True, stateful=True))
     model.add(GRU(256, activation='tanh', return_sequences=False, stateful=True))
     model.add(Dense(conf['rnn_output_size'], activation='softmax'))
-    model.load_weights(model_weight)
+    model.load_weights(os.path.join(cwd,'../',model_weight))
     logger.info(f"Loaded model_weight from {model_weight}")
 
     return model
