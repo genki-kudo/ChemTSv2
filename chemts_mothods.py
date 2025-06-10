@@ -20,9 +20,7 @@ logs_dir = 'logs'
 class Methods:
     def __init__(self, conf=None):
         self.conf = conf
-        self.logger = self.setup_custom_logger('ChemTS', os.path.join('logs', 'ChemTS.log'))
-        #self.chemts_config_path = os.path.join(self.conf.target_dirname, '_setting.yaml')
-        #print("config_path=>", self.chemts_config_path)
+        self.logger = self.setup_custom_logger('ChemTS', os.path.join(self.conf['OUTPUT']['directory'], self.conf['OUTPUT']['logs_dir'], 'ChemTS.log'))
 
     def setup_custom_logger(self, name, log_file, log_level=logging.INFO):
         logger = logging.getLogger(name)
@@ -190,7 +188,7 @@ class Methods:
         else:
             return False
 
-    def make_config_file(self, configs, weight_model_dir):
+    def make_config_file(self, configs, weight_model_dir, target_d):
         chemts_config = configs['ChemTS']
 
         # MWごとにモデル切り替え機能
@@ -225,7 +223,7 @@ class Methods:
             dscore_parameters[key]['max'] = configs[key]['max']
             dscore_parameters[key]['min'] = configs[key]['min']
 
-        t_file = os.path.join(chemts_config['target_dirname'], '_setting.yaml')
+        t_file = os.path.join(target_d, '_setting.yaml')
         with open(t_file, 'w') as f:
             yaml.dump(chemts_config, f, default_flow_style=False, sort_keys=False)
 

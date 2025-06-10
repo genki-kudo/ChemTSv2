@@ -48,6 +48,11 @@ def get_parser():
         "--input_smiles", type=str,
         help="SMILES string (Need to put the atom you want to extend at the end of the string)"
     )
+    parser.add_argument(
+        "-t", "--target_dirname", type=str, required=True,
+        help="path to target_directory"
+    )
+    
     return parser.parse_args()
 
 
@@ -155,13 +160,13 @@ def main():
     with open(args.config, "r") as f:
         conf = yaml.load(f, Loader=yaml.SafeLoader)
     set_default_config(conf)
-    os.makedirs(conf['output_dir'], exist_ok=True)
+    os.makedirs(args.target_dirname, exist_ok=True)
     os.environ['CUDA_VISIBLE_DEVICES'] = "-1" if args.gpu is None else args.gpu
 
     # set log level
     conf["debug"] = args.debug
     log_level = DEBUG if args.debug else INFO
-    logger = get_logger(log_level, conf["output_dir"])
+    logger = get_logger(log_level, args.target_dirname)
     if not args.debug:
         RDLogger.DisableLog("rdApp.*")
 

@@ -5,9 +5,7 @@ import rdkit
 from rdkit import Chem
 from IPython.core.debugger import Pdb
 
-# from extend_driver import setup_custom_logger
 from ChemTSv2.chemts_mothods import Methods, logs_dir
-# from ChemTSv2.chemts_mothods import *
 import logging
 
 cwd = os.path.dirname(os.path.abspath(__file__))
@@ -18,10 +16,9 @@ class Generate_Lead:
         self.rank_output_dirs = []
         self.input_compound_files = []
         self.conf = config  
+        self.out_log_file = os.path.join(self.conf['OUTPUT']['directory'], self.conf['OUTPUT']['logs_dir'], 'ChemTS.log')
         cm = Methods(self.conf)
         self.cm = cm
-        self.out_log_file = os.path.join(logs_dir, 'ChemTS.log')
-        self.generation_workflow = self.conf['GENERATE_WORKFLOW']['working_directory']
         self.target_dirname = self.conf['ChemTS']['target_dirname']
         self.logger = self.cm.setup_custom_logger('ChemTS', self.out_log_file)
 
@@ -33,7 +30,7 @@ class Generate_Lead:
             trajectory_name = trajectory_dir.split(os.sep)[-1]
             trajectory_num = trajectory_name.split('_')[-1]
 
-            ChemTS_output_dir = os.path.join(self.generation_workflow, 'ChemTS')
+            ChemTS_output_dir = os.path.join(self.conf['OUTPUT']['directory'], self.conf['ChemTS']['working_directory'])
             trajectory_output_dir = os.path.join(ChemTS_output_dir, trajectory_name)
             os.makedirs(trajectory_output_dir, exist_ok = True)
             
@@ -52,6 +49,7 @@ class Generate_Lead:
                 self.logger.info(f"rank , {rank}")
                 rank_output_dir = os.path.join(trajectory_output_dir, rank)
                 os.makedirs(rank_output_dir, exist_ok = True)
+                self.target_dirname = rank_output_dir
                 self.rank_output_dirs.append(rank_output_dir)
 
                 # 生やしたい分子量を取得
@@ -87,19 +85,14 @@ class Generate_Lead:
 
                 self.logger.info(f"rearrange_smi , {rearrange_smi}")
                 
-                # smiles output のロケーションが固定されている
-                # /ChemTSv2に変更するため、この設定はPermission Denied
-                os.makedirs(os.path.join(self.target_dirname), exist_ok=True)
-                print(self.target_dirname)
                 subprocess.run(['rm', os.path.join(self.target_dirname, '_setting.yaml')])
-                self.cm.make_config_file({**config_add_props, **sincho_result}, weight_model_dir)
+                self.cm.make_config_file({**config_add_props, **sincho_result}, weight_model_dir, self.target_dirname)
 
-                #print("GOOD")
                 # 化合物生成をn回
                 df_result_all = pd.DataFrame()
                 for n in range(1, int(self.conf['ChemTS']['num_chemts_loops'])+1):
                     with open(self.out_log_file, 'a') as stdout_f:
-                        subprocess.run(['python', '/ChemTSv2/run.py', '-c', os.path.join(self.target_dirname, '_setting.yaml'), 
+                        subprocess.run(['python', '/ChemTSv2/run.py', '-c', os.path.join(self.target_dirname, '_setting.yaml'), '-t', self.target_dirname, 
                                         '--input_smiles', rearrange_smi], stdout=stdout_f, stderr=stdout_f)
                         subprocess.run(' '.join(['mv', os.path.join(self.target_dirname, 'result_C*'), 
                                                        os.path.join(self.target_dirname, 'result.csv')]), 
