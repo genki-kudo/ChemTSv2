@@ -66,7 +66,7 @@ class Node:
 
 
 class MCTS:
-    def __init__(self, root_state, conf, tokens, model, reward_calculator, policy_evaluator, logger):
+    def __init__(self, root_state, conf, tokens, model, reward_calculator, policy_evaluator, logger, target_dirname):
         self.start_time = time.time()
         self.rootnode = Node(policy_evaluator, state=root_state, conf=conf)
         self.conf = conf
@@ -90,7 +90,7 @@ class MCTS:
             self.obj_column_names = [f.__name__ for f in self.reward_calculator.get_batch_objective_functions()]
         else:
             self.obj_column_names = [f.__name__ for f in self.reward_calculator.get_objective_functions(self.conf)]
-        self.output_path = os.path.join(conf['output_dir'], f"result_C{conf['c_val']}.csv")
+        self.output_path = os.path.join(target_dirname, f"result_C{conf['c_val']}.csv")
         if os.path.exists(self.output_path) and not conf['restart']:
             sys.exit(f"[ERROR] {self.output_path} already exists. Please specify a different file name.")
 

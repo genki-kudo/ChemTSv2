@@ -114,4 +114,4 @@ class Generate_Lead:
                 # 今回の生成のrewardなどをプロット
                 self.cm.plot_reward(output_csv_path)
 
-                subprocess.run(' '.join(['mv', os.path.join(self.target_dirname, '*'), rank_output_dir]), shell=True)
+                #subprocess.run(' '.join(['mv', os.path.join(self.target_dirname, '*'), rank_output_dir]), shell=True)

@@ -214,7 +214,7 @@ def main():
     logger.debug(f"Loaded tokens are {tokens}")
 
     state = State() if args.input_smiles is None else State(position=conf["tokenized_smiles"])
-    mcts = MCTS(root_state=state, conf=conf, tokens=tokens, model=model, reward_calculator=reward_calculator, policy_evaluator=policy_evaluator, logger=logger)
+    mcts = MCTS(root_state=state, conf=conf, tokens=tokens, model=model, reward_calculator=reward_calculator, policy_evaluator=policy_evaluator, logger=logger, target_dirname=args.target_dirname)
     mcts.search()
     logger.info("Finished!")
 
