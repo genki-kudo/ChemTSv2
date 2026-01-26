@@ -21,6 +21,8 @@ from chemtsv2.preprocessing import smi_tokenizer, selfies_tokenizer_from_smiles
 
 from IPython.core.debugger import Pdb
 
+cwd = os.path.dirname(os.path.abspath(__file__))
+
 def get_parser():
     parser = argparse.ArgumentParser(
         description="",
@@ -46,6 +48,11 @@ def get_parser():
         "--input_smiles", type=str,
         help="SMILES string (Need to put the atom you want to extend at the end of the string)"
     )
+    parser.add_argument(
+        "-t", "--target_dirname", type=str, required=True,
+        help="path to target_directory"
+    )
+    
     return parser.parse_args()
 
 
@@ -153,13 +160,13 @@ def main():
     with open(args.config, "r") as f:
         conf = yaml.load(f, Loader=yaml.SafeLoader)
     set_default_config(conf)
-    os.makedirs(conf['output_dir'], exist_ok=True)
+    os.makedirs(args.target_dirname, exist_ok=True)
     os.environ['CUDA_VISIBLE_DEVICES'] = "-1" if args.gpu is None else args.gpu
 
     # set log level
     conf["debug"] = args.debug
     log_level = DEBUG if args.debug else INFO
-    logger = get_logger(log_level, conf["output_dir"])
+    logger = get_logger(log_level, args.target_dirname)
     if not args.debug:
         RDLogger.DisableLog("rdApp.*")
 
@@ -216,7 +223,7 @@ def main():
     logger.debug(f"Loaded tokens are {tokens}")
 
     state = State() if args.input_smiles is None else State(position=conf["tokenized_smiles"])
-    mcts = MCTS(root_state=state, conf=conf, tokens=tokens, model=model, reward_calculator=reward_calculator, policy_evaluator=policy_evaluator, logger=logger)
+    mcts = MCTS(root_state=state, conf=conf, tokens=tokens, model=model, reward_calculator=reward_calculator, policy_evaluator=policy_evaluator, logger=logger, target_dirname=args.target_dirname)
     mcts.search()
     logger.info("Finished!")
 

@@ -140,7 +140,7 @@ class Generate_Lead:
     def _run_chemts_process(self, trial_n, rearrange_smi, working_dir: Path, setting_file_name: str) -> None:
         with open(self.out_log_file, 'a') as stdout_f:
             try:
-                cmd = [ 'python', 'run.py', '-c', str(working_dir / setting_file_name), '--input_smiles', rearrange_smi ]
+                cmd = [ 'python', 'run.py', '-c', str(working_dir / setting_file_name), '-t', str(working_dir), '--input_smiles', rearrange_smi ]
                 subprocess.run(cmd, cwd=str(CHEMTS_CURRENT_DIR), stdout=stdout_f, stderr=stdout_f, check=True)
             except subprocess.CalledProcessError as e:
                 self.logger.error(f"ChemTS execution failed in trial {trial_n}: {e}")
