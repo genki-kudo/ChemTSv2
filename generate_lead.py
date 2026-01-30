@@ -18,12 +18,13 @@ import ChemTSv2.chemts_methods as cm
 CHEMTS_CURRENT_DIR = Path(__file__).resolve().parent
 
 class Generate_Lead:
-    def __init__(self, config, output_dir, log_file):
+    # TODO: configをchemts_configに変更する。(extend_driver.py等と合わせる)
+    def __init__(self, config, output_dir: str, log_file: str):
         self.input_compound_files = []
         self.base_chemts_config = copy.deepcopy(config['ChemTS'])
         self.out_log_file = log_file
         self.logger = cm.setup_custom_logger('ChemTS', str(self.out_log_file))
-        self.generation_workflow = Path(output_dir)
+        self.chemts_output_dir = Path(output_dir)
         self.num_chemts_loops = int(config['ChemTS']['num_chemts_loops'])
 
     def run(self, trajectory_dirs: List[Path]) -> List[Path]:
@@ -39,8 +40,7 @@ class Generate_Lead:
             trajectory_name = trajectory_dir.name
             trajectory_num = trajectory_name.split('_')[-1]
 
-            ChemTS_output_dir = self.generation_workflow / 'ChemTS'
-            trajectory_output_dir = ChemTS_output_dir / trajectory_name
+            trajectory_output_dir = self.chemts_output_dir / trajectory_name
             trajectory_output_dir.mkdir(parents=True, exist_ok = True)
             
             
