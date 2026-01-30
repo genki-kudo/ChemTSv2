@@ -102,9 +102,14 @@ class Generate_Lead:
                     ts_config.update_trial_settings(sincho_result, weight_model_dir, working_dir, logger=self.logger)
                     ts_config.save(working_dir / setting_file_name)
 
-                    self._run_chemts_process(n, rearrange_smi, working_dir, setting_file_name)
-                    working_dirs.append(working_dir)
+                    chemts_success = self._run_chemts_process(n, rearrange_smi, working_dir.resolve(), setting_file_name)
+                    if chemts_success:
+                        working_dirs.append(working_dir)
                 
+                if not working_dirs:
+                    self.logger.warning(f"All trials failed for {rank} in {trajectory_name}. Skipping aggregation.")
+                    continue
+
                 # ログの集約
                 with open(rank_output_dir / 'run.log.all', 'w') as f_out:
                     for working_dir in working_dirs:
@@ -137,11 +142,12 @@ class Generate_Lead:
 
         return rank_output_dirs
 
-    def _run_chemts_process(self, trial_n, rearrange_smi, working_dir: Path, setting_file_name: str) -> None:
+    def _run_chemts_process(self, trial_n, rearrange_smi, working_dir: Path, setting_file_name: str) -> bool:
         with open(self.out_log_file, 'a') as stdout_f:
             try:
                 cmd = [ 'python', 'run.py', '-c', str(working_dir / setting_file_name), '-t', str(working_dir), '--input_smiles', rearrange_smi ]
                 subprocess.run(cmd, cwd=str(CHEMTS_CURRENT_DIR), stdout=stdout_f, stderr=stdout_f, check=True)
+                return True
             except subprocess.CalledProcessError as e:
-                self.logger.error(f"ChemTS execution failed in trial {trial_n}: {e}")
-                raise
+                self.logger.warning(f"ChemTS execution failed in trial {trial_n}: {e}")
+                return False

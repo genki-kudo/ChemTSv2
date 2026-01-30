@@ -241,16 +241,16 @@ class ChemTSConfig:
         with open(file_path, 'w') as f:
             yaml.dump(self._config, f, default_flow_style=False, sort_keys=False)
 
-def choise_mol(df, outpath, cutoff=0.3, nsamples=10):
+def choice_mol(df, outpath, cutoff=0.3, nsamples=10):
     clusters = mol_clustering_butina(df['mols'], cutoff=cutoff)
     df = df.reset_index(drop=True)
     for cluster_num, idx in clusters.items():
         df.loc[idx, 'clusters'] = cluster_num
     df['clusters'] = df['clusters'].astype(int)
     plot_clustering_tsne(df, outpath, n_components=2, nsamples=nsamples)
-    df_choise = choise_mol_from_clustering(df, nsamples)
+    df_choice = choice_mol_from_clustering(df, nsamples)
     
-    return df_choise
+    return df_choice
     
 def mol_clustering_butina(mols, cutoff):
     morgan_fp = [AllChem.GetMorganFingerprintAsBitVect(x, 2, 2048) for x in mols]
@@ -308,10 +308,10 @@ def plot_clustering_tsne(df, outpath, n_components=2, nsamples=10, perplexity=5)
     plt.savefig(os.path.join(outpath, 'clustering.png'), bbox_inches='tight')
 
 # クラスタリングして、クラスタリング中心(隣接距離が最小)を選択
-def choise_mol_from_clustering(df, nsamples):
+def choice_mol_from_clustering(df, nsamples):
     dis_matrix_tri = calc_distance_array(df['mols'])
     
-    choise_rows = []
+    choice_rows = []
 
     # 要検討
     # if len(set(df['clusters'])) < nsamples:
@@ -325,9 +325,9 @@ def choise_mol_from_clustering(df, nsamples):
                 row_index = indices[i]
                 col_index = indices[j]
                 result_array[i, j] = dis_matrix_tri[row_index, col_index]
-        choise_rows.append(indices[np.argmin(result_array.mean(axis=0))])
-    df_choise = df.iloc[choise_rows]
-    return df_choise
+        choice_rows.append(indices[np.argmin(result_array.mean(axis=0))])
+    df_choice = df.iloc[choice_rows]
+    return df_choice
 
 def plot_reward(result_csv_path, window = 50):
     fig0, axs0 = plt.subplots(1, 3, figsize=(15, 5))
