@@ -7,6 +7,7 @@ import sys
 import copy
 from pathlib import Path
 from typing import List
+from concurrent.futures import ProcessPoolExecutor
 
 import pandas as pd
 import yaml
@@ -17,6 +18,20 @@ import ChemTSv2.chemts_methods as cm
 
 CHEMTS_CURRENT_DIR = Path(__file__).resolve().parent
 
+def run_chemts_trial(rearrange_smi, working_dir, setting_file_name, chemts_current_dir):
+    stdout_log = working_dir / 'stdout.log'
+    with open(stdout_log, 'w') as stdout_f:
+        try:
+            cmd = [ 'python', 'run.py', '-c', str(working_dir / setting_file_name), '-t', str(working_dir), '--input_smiles', rearrange_smi ]
+            subprocess.run(cmd, cwd=str(chemts_current_dir), stdout=stdout_f, stderr=stdout_f, check=True)
+            # TODO: この返り値が良いかどうか考える
+            return True, None
+        except subprocess.CalledProcessError as e:
+            return False, f"Process returned non-zero exit code: {e.returncode}"
+        except Exception as e:
+            # 起動失敗やOSエラーなどをキャッチして戻り値として返す
+            return False, str(e)
+
 class Generate_Lead:
     # TODO: configをchemts_configに変更する。(extend_driver.py等と合わせる)
     def __init__(self, config, output_dir: str, log_file: str):
@@ -26,9 +41,13 @@ class Generate_Lead:
         self.logger = cm.setup_custom_logger('ChemTS', str(self.out_log_file))
         self.chemts_output_dir = Path(output_dir)
         self.num_chemts_loops = int(config['ChemTS']['num_chemts_loops'])
+        self.num_parallel = int(config['ChemTS'].get('num_parallel', 1))
 
     def run(self, trajectory_dirs: List[Path]) -> List[Path]:
-        rank_output_dirs = []
+        all_rank_output_dirs = []
+        all_tasks = []
+        
+        # ChemTSの引数を準備
         for trajectory_dir in trajectory_dirs:
             self.logger.info(str(trajectory_dir))
             sincho_result_file = trajectory_dir / 'sincho_result.yaml'
@@ -49,6 +68,7 @@ class Generate_Lead:
             input_compound_smiles = Chem.MolToSmiles(Chem.MolFromPDBFile(str(input_compound_file)))
 
             # 中性ならTrue,電荷ありならFalse
+            # TODO: 以降の処理で使っているためself.is_neutralとしているが、おそらくローカル変数にして、そっちはそっちで対応した方が良い
             self.is_neutral = cm.check_neutral(input_compound_smiles)
             
             if not self.is_neutral:
@@ -69,7 +89,7 @@ class Generate_Lead:
                 self.logger.info(f"rank , {rank}")
                 rank_output_dir = trajectory_output_dir / rank
                 rank_output_dir.mkdir(parents=True, exist_ok = True)
-                rank_output_dirs.append(rank_output_dir)
+                all_rank_output_dirs.append(rank_output_dir)
 
                 # 生やしたい分子量を取得
                 estimate_add_mw = sincho_result['mw']
@@ -91,63 +111,75 @@ class Generate_Lead:
 
                 self.logger.info(f"rearrange_smi , {rearrange_smi}")
 
-                # 化合物生成をn回
-                working_dirs = []
+                # 化合物生成をn回（タスクの準備のみ）
                 for n in range(1, self.num_chemts_loops+1):
                     working_dir = rank_output_dir / 'working' / f'trial_{n}'
                     working_dir.mkdir(parents=True, exist_ok=True)
                     setting_file_name = '_setting.yaml'
                     
                     # 試行ごとの設定更新と保存
-                    ts_config.update_trial_settings(sincho_result, weight_model_dir, working_dir, logger=self.logger)
-                    ts_config.save(working_dir / setting_file_name)
+                    ts_config_trial = copy.deepcopy(ts_config)
+                    ts_config_trial.update_trial_settings(sincho_result, weight_model_dir, working_dir, logger=self.logger)
+                    ts_config_trial.save(working_dir / setting_file_name)
 
-                    chemts_success = self._run_chemts_process(n, rearrange_smi, working_dir.resolve(), setting_file_name)
-                    if chemts_success:
-                        working_dirs.append(working_dir)
+                    # タスクパラメータの保存
+                    task_params = (n, rearrange_smi, working_dir.resolve(), setting_file_name, CHEMTS_CURRENT_DIR)
+                    all_tasks.append(task_params)
                 
-                if not working_dirs:
-                    self.logger.warning(f"All trials failed for {rank} in {trajectory_name}. Skipping aggregation.")
-                    continue
+        # ChemTSを並列実行
+        for task_param in all_tasks:
+            trial_n, rearrange_smi, working_dir, setting_file_name, chemts_current_dir = task_param
+            chemts_success, _error_info = run_chemts_trial(rearrange_smi, working_dir, setting_file_name, chemts_current_dir)
+            if not chemts_success:
+                self.logger.error(f"chemts failed in trial {trial_n} at {working_dir}: {_error_info}")
 
-                # ログの集約
-                with open(rank_output_dir / 'run.log.all', 'w') as f_out:
-                    for working_dir in working_dirs:
-                        run_log_path = working_dir / 'run.log'
-                        if run_log_path.exists():
-                            with open(run_log_path, 'r') as f_in:
-                                f_out.write(f_in.read())
+        # 集計
+        for rank_output_dir in all_rank_output_dirs:
+            rank_id = rank_output_dir.name
+            traj_name = rank_output_dir.parent.name
+            working_dirs = []
+            
+            # 試行ディレクトリを探索して成功したものを特定
+            for n in range(1, self.num_chemts_loops + 1):
+                wd = rank_output_dir / 'working' / f'trial_{n}'
+                if list(wd.glob('result_C*')): # 結果ファイルが存在すれば成功とみなす
+                    working_dirs.append(wd)
+            
+            if not working_dirs:
+                self.logger.error(f"All trials failed for {rank_id} in {traj_name}. Skipping aggregation.")
+                continue
 
-                # 1. 結果CSVの集約
-                df_result_list = []
-                for n, working_dir in enumerate(working_dirs, start=1):
-                    matched_files = list(working_dir.glob('result_C*'))
-                    if len(matched_files) == 1:
-                        df = pd.read_csv(str(matched_files[0]))
-                        df.insert(0, 'trial', n)
-                        df_result_list.append(df)
-                    elif len(matched_files) > 1:
-                        raise RuntimeError(f"Multiple result files found in {working_dir}: {matched_files}. Expected only one.")
-                    else:
-                        raise RuntimeError(f"No result file found matching 'result_C*' in {working_dir}")
+            # ログの集約
+            with open(rank_output_dir / 'run.log.all', 'w') as f_out:
+                for working_dir in working_dirs:
+                    run_log_path = working_dir / 'run.log'
+                    if run_log_path.exists():
+                        with open(run_log_path, 'r') as f_in:
+                            f_out.write(f_in.read())
 
-                df_result_all = pd.concat(df_result_list, ignore_index=True) if df_result_list else pd.DataFrame()
-                
+            # 結果CSVの集約
+            df_result_list = []
+            for n, working_dir in enumerate(working_dirs, start=1):
+                matched_files = list(working_dir.glob('result_C*'))
+                if len(matched_files) == 1:
+                    df = pd.read_csv(str(matched_files[0]))
+                    # TODO: working_dirsがappendされていない場合nがずれる可能性がある(TODO.md参照)
+                    df.insert(0, 'trial', n)
+                    df_result_list.append(df)
+                elif len(matched_files) > 1:
+                    raise RuntimeError(f"Multiple result files found in {working_dir}: {matched_files}. Expected only one.")
+                else:
+                    self.logger.error(f"No result file found matching 'result_C*' in {working_dir}")
+            
+            if df_result_list:
+                df_result_all = pd.concat(df_result_list, ignore_index=True)
                 # n回分を一つのファイルに集約する
                 output_csv_path = rank_output_dir / 'results.csv'
                 df_result_all.to_csv(str(output_csv_path))
                 
                 # 今回の生成のrewardなどをプロット
                 cm.plot_reward(str(output_csv_path))
+            else:
+                self.logger.error(f"No valid results were collected for {rank_id} in {traj_name}. 'results.csv' will not be created.")
 
-        return rank_output_dirs
-
-    def _run_chemts_process(self, trial_n, rearrange_smi, working_dir: Path, setting_file_name: str) -> bool:
-        with open(self.out_log_file, 'a') as stdout_f:
-            try:
-                cmd = [ 'python', 'run.py', '-c', str(working_dir / setting_file_name), '-t', str(working_dir), '--input_smiles', rearrange_smi ]
-                subprocess.run(cmd, cwd=str(CHEMTS_CURRENT_DIR), stdout=stdout_f, stderr=stdout_f, check=True)
-                return True
-            except subprocess.CalledProcessError as e:
-                self.logger.warning(f"ChemTS execution failed in trial {trial_n}: {e}")
-                return False
+        return all_rank_output_dirs
