@@ -23,6 +23,7 @@ def run_chemts_trial(rearrange_smi, working_dir, setting_file_name, chemts_curre
     with open(stdout_log, 'w') as stdout_f:
         try:
             cmd = [ 'python', 'run.py', '-c', str(working_dir / setting_file_name), '-t', str(working_dir), '--input_smiles', rearrange_smi ]
+            # TODO: おそらくsys.executableを使ったほうが良い
             subprocess.run(cmd, cwd=str(chemts_current_dir), stdout=stdout_f, stderr=stdout_f, check=True)
             # TODO: この返り値が良いかどうか考える
             return True, None
@@ -37,6 +38,7 @@ class Generate_Lead:
     def __init__(self, config, output_dir: str, log_file: str):
         self.input_compound_files = []
         self.base_chemts_config = copy.deepcopy(config['ChemTS'])
+        # TODO: out_log_fileではなくloggerを直接受け取るようにする
         self.out_log_file = log_file
         self.logger = cm.setup_custom_logger('ChemTS', str(self.out_log_file))
         self.chemts_output_dir = Path(output_dir)
@@ -127,12 +129,28 @@ class Generate_Lead:
                     all_tasks.append(task_params)
                 
         # ChemTSを並列実行
-        for task_param in all_tasks:
-            trial_n, rearrange_smi, working_dir, setting_file_name, chemts_current_dir = task_param
-            chemts_success, _error_info = run_chemts_trial(rearrange_smi, working_dir, setting_file_name, chemts_current_dir)
-            if not chemts_success:
-                self.logger.error(f"chemts failed in trial {trial_n} at {working_dir}: {_error_info}")
+        total_tasks = len(all_tasks)
+        completed_count = 0
+        self.logger.info(f"Starting parallel execution of {total_tasks} tasks with {self.num_parallel} workers.")
+        with ProcessPoolExecutor(max_workers=self.num_parallel) as executor:
+            futures = []
+            for task_param in all_tasks:
+                trial_n, rearrange_smi, working_dir, setting_file_name, chemts_current_dir = task_param
+                future = executor.submit(run_chemts_trial, rearrange_smi, working_dir, setting_file_name, chemts_current_dir)
+                futures.append((future, trial_n, working_dir))
 
+            for future, trial_n, working_dir in futures:
+                try:
+                    chemts_success, error_info = future.result()
+                    if not chemts_success:
+                        self.logger.error(f"ChemTS execution failed in trial {trial_n} at {working_dir}: {error_info}")
+                except Exception as e:
+                    # プロセスの異常死（セグフォ、OOM等）が発生した場合はfuture.result()が例外を投げる
+                    self.logger.error(f"ChemTS process crashed in trial {trial_n} at {working_dir}: {e}")
+                completed_count += 1
+                self.logger.info(f"Progress: {completed_count}/{total_tasks} trials finished.")
+        self.logger.info("All parallel tasks finished.")
+        
         # 集計
         for rank_output_dir in all_rank_output_dirs:
             rank_id = rank_output_dir.name
