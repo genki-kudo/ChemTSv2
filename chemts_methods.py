@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from pathlib import Path
 from glob import glob
 import logging
 from sklearn.manifold import TSNE
@@ -11,14 +12,13 @@ from rdkit import Chem, DataStructs
 from rdkit.Chem import Descriptors, AllChem, PandasTools, rdMolDescriptors, Draw, rdmolops
 from rdkit.ML.Cluster import Butina
 from openbabel import pybel
-from IPython.core.debugger import Pdb
 from rdkit.Chem import Crippen
 
 error_smiles = ['[n]']
 SINCHO_keys = ['SINCHO_MW', 'SINCHO_LogP']
 plot_cols = ['reward', 'Add_Substituent_MW', 'Add_Substituent_LogP']
 
-def setup_custom_logger(name, log_file, log_level=logging.INFO):
+def setup_custom_logger(name: str, log_file: str, log_level=logging.INFO):
     logger = logging.getLogger(name)
     if not logger.handlers:  # ハンドラが存在しない場合のみ追加する
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -41,26 +41,32 @@ def select_weight_model(smiles, estimate_mw, model_path_prefix='model/weight/'):
             min_distance = distance
             near_peak = peak
     
-    model_dir = str(near_peak-50) + str(near_peak+50)
+    model_dir_name = str(near_peak-50) + str(near_peak+50)
 
-    model_dir = model_path_prefix + model_dir
-    return model_dir
+    return str(Path(model_path_prefix) / model_dir_name)
 
 def check_neutral(smi):
     return rdmolops.GetFormalCharge(Chem.MolFromSmiles(smi))==0
 
 def do_neutral(charge_pdb_path, logger = logging.getLogger(__name__)):
-    input_compound_smiles = Chem.MolToSmiles(Chem.MolFromPDBFile(charge_pdb_path))
+    charge_pdb_path_obj = Path(charge_pdb_path)
+    input_compound_smiles = Chem.MolToSmiles(Chem.MolFromPDBFile(str(charge_pdb_path)))
     logger.info(f"charge smi , {input_compound_smiles}")
-    d_name = os.path.dirname(charge_pdb_path)
-    f_name_ext = os.path.basename(charge_pdb_path)
-    f_name, ext = os.path.splitext(f_name_ext)
+    d_name = charge_pdb_path_obj.parent
+    f_name_ext = charge_pdb_path_obj.name
+    f_name = charge_pdb_path_obj.stem
+    ext = charge_pdb_path_obj.suffix
+
     # PDBは結合情報（BondOrder等）が欠落しており、直接中性化を行うと水素付加位置の判定ミスが多発する。
     # そのため、結合情報を正確に扱えるMOL2形式を一時的に経由することで中性化の精度を保証しつつ、
     # 最終的にシステム全体の互換性に合わせるためPDBへ書き戻している。
-    subprocess.run(['cp', f_name_ext, f_name + '_org' + ext], cwd=d_name)
-    subprocess.run(['obabel', '-ipdb', f_name_ext, '-omol2', '-O', f_name + '.mol2'], cwd=d_name)
-    subprocess.run(['obabel', '-imol2', f_name + '.mol2','-opdb', '-O', f_name_ext, '--neutralize','-h'], cwd=d_name)
+    try:
+        subprocess.run(['cp', f_name_ext, f_name + '_org' + ext], cwd=d_name, check=True)
+        subprocess.run(['obabel', '-ipdb', f_name_ext, '-omol2', '-O', f_name + '.mol2'], cwd=d_name, check=True)
+        subprocess.run(['obabel', '-imol2', f_name + '.mol2','-opdb', '-O', f_name_ext, '--neutralize','-h'], cwd=d_name, check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Process failed with exit code {e.returncode}: {e.cmd}")
+        raise e
 
 def calculate_compound_properties(input_compound_smiles):
     properties = {}
@@ -72,9 +78,9 @@ def calculate_compound_properties(input_compound_smiles):
 
     return properties
 
-def set_rearrange_smiles(pdb_path, extend_atom, logger = logging.getLogger(__name__)):
+def set_rearrange_smiles(pdb_path: str, extend_atom, logger = logging.getLogger(__name__)):
     mol_from_pdb = Chem.MolFromPDBFile(pdb_path, sanitize=False)
-    mol_from_smiles, smi = read_mol(mol_from_pdb)
+    mol_from_smiles, smi = read_mol(mol_from_pdb, logger=logger)
     match = match_pdb_num_obabel_num(mol_from_pdb, mol_from_smiles, logger = logger)
     extend_idx = get_extend_idx(pdb_path, extend_atom)
     obabel_num = get_obabel_num(match, extend_idx)
@@ -82,11 +88,12 @@ def set_rearrange_smiles(pdb_path, extend_atom, logger = logging.getLogger(__nam
 
     return rearrange_smi
 
-def read_mol(mol_from_pdb):
+def read_mol(mol_from_pdb, logger=logging.getLogger(__name__)):
     smi = Chem.MolToSmiles(Chem.RemoveHs(mol_from_pdb))
     mol_from_smiles = Chem.MolFromSmiles(smi)
-    # TODO: mol_from_smilesがNoneになる場合の対処
-    assert mol_from_smiles is not None, "SMILESから分子が生成できませんでした。"
+    if mol_from_smiles is None:
+        logger.error(f"Failed to generate molecule from SMILES: {smi}")
+        raise ValueError(f"Failed to generate molecule from SMILES: {smi}")
     canonical_smi = Chem.MolToSmiles(mol_from_smiles)
 
     return mol_from_smiles, canonical_smi
@@ -105,7 +112,7 @@ def match_pdb_num_obabel_num(mol_from_pdb, mol_from_smiles, logger = logging.get
     mat = list(mol_from_smiles.GetSubstructMatch(mol_from_pdb))
     if len(mat) == 0:
         logger.error('Not match.')
-        exit()
+        raise ValueError("Substructure match failed.")
     mat = [m+1 for m in mat]
     match = pd.DataFrame(mat).reset_index(drop=True)
     match['PDB_index'] = map_num
@@ -139,23 +146,23 @@ def check_error_smiles(smiles):
 
 def modify_smiles(error_smiles, mol_dir, logger = logging.getLogger(__name__)):
     error_smiles_add_at = error_smiles + '[At]'
-    at_pdb_path = os.path.join(mol_dir, 'add_at.pdb')
-    Chem.MolToPDBFile(Chem.MolFromSmiles(error_smiles_add_at), at_pdb_path)
+    at_pdb_path = Path(mol_dir) / 'add_at.pdb'
+    Chem.MolToPDBFile(Chem.MolFromSmiles(error_smiles_add_at), str(at_pdb_path))
     at_index = search_atom_index_from_pdb(at_pdb_path, 'AT')
     # print(at_index)
     # Pdb().set_trace()
     try:
-        rearrange_smi_at = set_rearrange_smiles(at_pdb_path, 'AT1', logger = logger)
-    except:
-        rearrange_smi_at = set_rearrange_smiles(at_pdb_path, 'AT', logger = logger)
+        rearrange_smi_at = set_rearrange_smiles(str(at_pdb_path), 'AT1', logger = logger)
+    except Exception:
+        rearrange_smi_at = set_rearrange_smiles(str(at_pdb_path), 'AT', logger = logger)
     modi_smi = rearrange_smi_at.replace('[At]','')
-    os.remove(at_pdb_path)
+    at_pdb_path.unlink()
 
     # Atがあった場所が伸長位置なのかの確認
     # 隣接原子の確認をして、想定と異なる位置ならワークフロー停止
-    if not check_true_sincho_position(rearrange_smi_at, modi_smi, at_index):
+    if not check_true_sincho_position(rearrange_smi_at, modi_smi, at_index, logger = logger):
         logger.error(f"伸長位置が想定と異なります:")
-        exit()
+        raise ValueError("Extension position mismatch.")
     
     return modi_smi
 
@@ -171,16 +178,18 @@ def search_atom_index_from_pdb(pdb_path, atom_symbol):
 
             return int(at_index)
 
-def check_true_sincho_position(rearrange_smi_at, modi_smi, at_index):
+def check_true_sincho_position(rearrange_smi_at, modi_smi, at_index, logger = logging.getLogger(__name__)):
     at_mol = Chem.MolFromSmiles(rearrange_smi_at)
     modify_mol_generate = Chem.MolFromSmiles(modi_smi + '[*]') #仮で*をつける
    
-    # TODO: at_molがNoneになる場合の対処
-    assert at_mol is not None, "At付きSMILESから分子が生成できませんでした。"
+    if at_mol is None:
+        logger.error(f"Failed to generate molecule from At-SMILES: {rearrange_smi_at}")
+        raise ValueError(f"Failed to generate molecule from At-SMILES: {rearrange_smi_at}")
     at_atom = at_mol.GetAtomWithIdx(at_index - 1) #RDKitは0始まり、PDBは1始まり
 
-    # TODO: modify_mol_generateがNoneになる場合の対処
-    assert modify_mol_generate is not None, "修正後SMILESから分子が生成できませんでした。"
+    if modify_mol_generate is None:
+        logger.error(f"Failed to generate molecule from modified SMILES: {modi_smi}[*]")
+        raise ValueError(f"Failed to generate molecule from modified SMILES: {modi_smi}[*]")
     sincho_idx = next(atom.GetIdx() for atom in modify_mol_generate.GetAtoms() if atom.GetSymbol() == "*") # type: ignore
     atom_tail = modify_mol_generate.GetAtomWithIdx(sincho_idx)
 
@@ -206,10 +215,11 @@ class ChemTSConfig:
 
         # MWごとにモデル切り替え機能
         if chemts_config['model_setting']['use_weight_model']:
+            weight_model_path = Path(weight_model_dir)
             # chemts_config.setdefault('model_setting', {})
-            chemts_config['model_setting']['model_json'] = os.path.join(weight_model_dir, 'model.tf25.json')
-            chemts_config['model_setting']['model_weight'] = os.path.join(weight_model_dir, 'model.tf25.best.ckpt.h5')
-            chemts_config['token'] = os.path.join(weight_model_dir, 'tokens.pkl')
+            chemts_config['model_setting']['model_json'] = str(weight_model_path / 'model.tf25.json')
+            chemts_config['model_setting']['model_weight'] = str(weight_model_path / 'model.tf25.best.ckpt.h5')
+            chemts_config['token'] = str(weight_model_path / 'tokens.pkl')
 
         # 評価関数の設定
         mw_center = sincho_result['mw']
@@ -305,7 +315,7 @@ def plot_clustering_tsne(df, outpath, n_components=2, nsamples=10, perplexity=5)
     plt.xlabel('t-SNE dimension 1')
     plt.ylabel('t-SNE dimension 2')
     plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
-    plt.savefig(os.path.join(outpath, 'clustering.png'), bbox_inches='tight')
+    plt.savefig(str(Path(outpath) / 'clustering.png'), bbox_inches='tight')
 
 # クラスタリングして、クラスタリング中心(隣接距離が最小)を選択
 def choice_mol_from_clustering(df, nsamples):
@@ -350,8 +360,9 @@ def plot_reward(result_csv_path, window = 50):
     # Axesにプロットされたデータがあるか確認し、データがある場合は凡例を表示
     if axs0[0].has_data():
         plt.legend()
-        fig0.savefig(os.path.join(os.path.dirname(result_csv_path), 'reward.png'))
-        fig1.savefig(os.path.join(os.path.dirname(result_csv_path), 'reward_smoothing.png'))
+        parent_dir = Path(result_csv_path).parent
+        fig0.savefig(str(parent_dir / 'reward.png'))
+        fig1.savefig(str(parent_dir / 'reward_smoothing.png'))
 
 # ひとかたまりのdfを分割する
 def split_df_on_decrease(df, column_name='trial'):
